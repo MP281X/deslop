@@ -1,47 +1,44 @@
-import 'react-native/Libraries/Core/setUpXHR'
-
 import {Router} from '@effect/ui'
+import type {View} from '@effect/ui'
 import {Native, NativeApp} from '@effect/ui-native'
 
-import {Effect, Layer, pipe} from 'effect'
+import {Layer, Option} from 'effect'
 
-import {FetchHttpClient} from 'effect/http'
-import {Atom, AtomRegistry} from 'effect/reactivity'
-import Linking from 'react-native/Libraries/Linking/Linking'
+import type {PaneLeaf, Press} from '@deslop/components/model'
+import {status, styles} from '@deslop/components/native'
+import {nativeComponents} from '@deslop/components/native/components'
+import {layerIPhoneShell} from '@deslop/runtime/iphone/shell'
 
-import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
+import {DeployApp} from '#app'
+import {DeployRoute, isDetail, layerDeploy} from '#reads'
+import {Workspace} from '#view'
+import type {DeployUi, SiteRow} from '#view'
 
-import {DeployError} from '#contracts'
+function Site<M>(h: Native.H<M>, site: SiteRow, open: (url: string) => Press) {
+	const components = nativeComponents<M>()
+	return h.view
+		.key(site.id)
+		.style(styles.titleLine)
+		.children(
+			site.status !== undefined && h.view.style({...styles.dot, backgroundColor: status[site.status]}),
+			Option.match(Option.fromUndefinedOr(site.url), {
+				onNone: () => h.text.style(styles.body).children(site.label),
+				onSome: url => components.button(h, {label: site.label, press: open(url)})
+			}),
+			site.line !== undefined && h.text.style({...styles.line, flexShrink: 1}).children(site.line)
+		)
+}
 
-import {layerIPhoneRouter} from '#iphone/router.ts'
-import {layerIPhoneSignIn, readIPhoneAccount, session} from '#iphone/session.ts'
-import {Workspace} from '#iphone/view.ts'
-import {DeployApp} from '#screens/deploy.ts'
-import {DeployReads, Execute, OpenEndpoint, Refresh} from '#screens/reads.ts'
-import {DeployRoute} from '#screens/routes.ts'
+const drawing: DeployUi<Native.H<never>, PaneLeaf<Native.NoTextInput<never>>, View.Content<never>> = {
+	...nativeComponents<never>(),
+	site: Site
+}
 
-const App = DeployApp(Native.vocabulary, false, Workspace)
-
-const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(readIPhoneAccount)
-const reads = Layer.merge(
-	DeployReads.layer(layerSocketProtocol(session.layerIPhoneSocket), accountAtom),
-	AtomRegistry.layer
-)
-const openEndpoint = OpenEndpoint.toLayer(request =>
-	Effect.ignore(
-		Effect.tryPromise({
-			catch: cause => DeployError.make({cause, message: 'Could not open the URL'}),
-			try: () => Linking.openURL(request.url)
-		}),
-		{log: 'Warn', message: 'Could not open the URL'}
-	)
-)
+const App = DeployApp(Native.vocabulary, (h, screen) => Workspace(h, screen, drawing))
 
 NativeApp.register(
-	pipe(
+	Layer.provide(
 		NativeApp.mount(App, Router.props(DeployRoute)),
-		Layer.provide(pipe(Execute.layer, Layer.merge(Refresh.layer), Layer.provideMerge(reads))),
-		Layer.provide(layerIPhoneRouter),
-		Layer.provide(Layer.merge(layerIPhoneSignIn, openEndpoint))
+		Layer.provideMerge(layerDeploy, layerIPhoneShell({name: 'deploy', replace: isDetail, route: DeployRoute}))
 	)
 )

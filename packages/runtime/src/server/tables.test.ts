@@ -31,10 +31,17 @@ type ColumnInfo = typeof ColumnInfo.Type
 const ColumnInfo = Schema.Struct({name: Schema.String, notnull: Schema.BooleanFromBit, type: Schema.String})
 
 // Every service whose class carries its `migrations`, and every model that names its `table`, by app: one app is one database.
-const servers = import.meta.glob('../../../../apps/*/src/server/main.ts')
-const services = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/server/*/service.ts', {eager: true})
+const servers = import.meta.glob(['../../../../apps/*/src/server/main.ts', '../../../../apps/*/src/server.ts'])
+const services = import.meta.glob<Record<string, unknown>>(
+	['../../../../apps/*/src/server/*/service.ts', '../../../../apps/*/src/*/server.ts'],
+	{eager: true}
+)
 const schemas = import.meta.glob<Record<string, unknown>>(
-	['../../../../apps/*/src/contracts.ts', '../../../../apps/*/src/server/*/schema.ts'],
+	[
+		'../../../../apps/*/src/contracts.ts',
+		'../../../../apps/*/src/server/*/schema.ts',
+		'../../../../apps/*/src/*/contract.ts'
+	],
 	{eager: true}
 )
 

@@ -2,7 +2,7 @@ import type {View} from '@effect/ui'
 
 import {Array, Option, pipe} from 'effect'
 
-import type {RowOptions} from '@deslop/design/model'
+import type {RowOptions} from '@deslop/components/model'
 
 import type {Reader, StashMessage, StashScreen} from '#screens/notes.ts'
 

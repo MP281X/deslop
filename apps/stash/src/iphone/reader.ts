@@ -3,7 +3,7 @@ import type {Markdown} from '@effect/ui/html'
 
 import {Array, Boolean, Function, Match, Option, Result, String} from 'effect'
 
-import {Row, status, styles} from '@deslop/design/native'
+import {Row, status, styles} from '@deslop/components/native'
 
 import {Button} from '#iphone/controls.ts'
 import {Gallery} from '#iphone/gallery.ts'

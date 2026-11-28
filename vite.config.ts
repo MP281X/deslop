@@ -7,6 +7,9 @@ import {defineConfig} from 'vite-plus'
 
 import {lint} from './tools/coding-standards/src/lint.ts'
 
+// The apps not yet moved to Deploy's feature layout; every other app and the template must follow it, and each app's migration removes its name here.
+const UNMIGRATED = ['auth', 'gateway', 'opm', 'portfolio', 'scope', 'stash', 'trips']
+
 // Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
 const PREVIEW_UNIT = Array.join(
 	[
@@ -30,7 +33,7 @@ const PREVIEW = Array.join(
 		// Without an app argument, the first app with a web page this branch changes, else Portfolio.
 		'[ -n "$a" ] || a=$({ git diff --name-only origin/main...HEAD; git status --porcelain --no-renames | cut -c4-; } 2>/dev/null | grep -oP "^apps/\\K[^/]+" | sort -u | while read -r x; do [ -f "apps/$x/index.html" ] && echo "$x"; done | awk NR==1)',
 		'a=${a:-portfolio}',
-		'[[ $a =~ ^[a-z][a-z0-9-]*$ && -f apps/$a/src/server/main.ts && -f apps/$a/src/web/main.ts ]] || fail "Not an app: $a"',
+		'[[ $a =~ ^[a-z][a-z0-9-]*$ && ( -f apps/$a/src/server/main.ts || -f apps/$a/src/server.ts ) && -f apps/$a/src/web/main.ts ]] || fail "Not an app: $a"',
 		// Tailscale's own listeners on the tailnet addresses carry the serve entry, not an app.
 		'listeners() { ss -Hltnp "sport = :$p" | grep -v %tailscale0; }',
 		'ours() { local l x; l=$(listeners) && while read -r x; do [[ $x =~ pid=([0-9]+) && $(cat /proc/${BASH_REMATCH[1]}/cgroup 2>/dev/null) == */$u.service ]] || return 1; done <<<"$l"; }',
@@ -115,6 +118,12 @@ export default defineConfig({
 		ignorePatterns: ['**/*.gen.ts'],
 		overrides: [
 			{
+				// A source file stays small enough to read whole; a test may be longer.
+				excludeFiles: ['**/*.test.ts', ...Array.map(UNMIGRATED, name => `**/apps/${name}/**`)],
+				files: ['**/apps/*/**', '**/tools/create-app/template/**'],
+				rules: {'eslint/max-lines': ['error', 600]}
+			},
+			{
 				files: ['**/tools/coding-standards/src/lint.test.ts'],
 				rules: {
 					'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program'],
@@ -154,6 +163,7 @@ export default defineConfig({
 			}
 		],
 		rules: {
+			'@deslop/coding-standards/app-layout': ['error', ...UNMIGRATED],
 			'eslint-js/no-restricted-syntax': [
 				...lint.rules['eslint-js/no-restricted-syntax'],
 				{

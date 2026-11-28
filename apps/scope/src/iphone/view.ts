@@ -3,7 +3,7 @@ import {Pressable} from '@effect/ui-native/kit'
 
 import {Array, Boolean, Function, Match, Option, pipe} from 'effect'
 
-import {ListDetail, Row, black, ink, selected, status, styles} from '@deslop/design/native'
+import {ListDetail, Row, black, ink, selected, status, styles} from '@deslop/components/native'
 
 import {scopeLayout} from '#screens/scope.ts'
 import type {Screen} from '#screens/scope.ts'

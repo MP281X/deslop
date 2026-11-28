@@ -9,7 +9,7 @@ import {Boolean, Effect, Function, Layer, Number, Option, Predicate, Schema, Str
 import {FetchHttpClient, HttpClient} from 'effect/http'
 import {AtomRegistry} from 'effect/reactivity'
 
-import {Layout, Row, Toolbar, ink, styles, WatchLayout, webStyle} from '@deslop/design/web'
+import {Layout, Row, Toolbar, ink, styles, WatchLayout, webStyle} from '@deslop/components/web'
 import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
 import {accountAtom, addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 

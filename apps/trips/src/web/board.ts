@@ -4,8 +4,8 @@ import type {Html} from '@effect/ui/html'
 
 import {Option} from 'effect'
 
-import type {PaneLeaf} from '@deslop/design/model'
-import {Row, status, styles, webStyle} from '@deslop/design/web'
+import type {PaneLeaf} from '@deslop/components/model'
+import {Row, status, styles, webStyle} from '@deslop/components/web'
 
 import {boardingSections, flightRowOptions, heroStatus, itineraryContent} from '#screens/board.ts'
 import type {BoardingPass, FlightRow, Itinerary} from '#screens/board.ts'

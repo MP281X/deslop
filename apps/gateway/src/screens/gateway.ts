@@ -7,7 +7,7 @@ import type {Cause} from 'effect'
 import {Url} from 'effect/http'
 import {AsyncResult} from 'effect/reactivity'
 
-import type {ToolbarAction} from '@deslop/design/model'
+import type {ToolbarAction} from '@deslop/components/model'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {Account} from '@deslop/runtime/shared/schema'
 import {TimeFrame} from '@deslop/runtime/shared/time'

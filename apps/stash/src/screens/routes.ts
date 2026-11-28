@@ -2,7 +2,7 @@ import {Command, Route} from '@effect/ui'
 
 import {Schema} from 'effect'
 
-import {backOrHome} from '@deslop/design/navigation'
+import {backOrHome} from '@deslop/components/navigation'
 
 import {NoteId} from '#contracts'
 

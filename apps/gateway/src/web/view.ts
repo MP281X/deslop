@@ -2,7 +2,7 @@ import type {Html} from '@effect/ui/html'
 
 import {Array, Boolean, Function, Predicate, String, pipe} from 'effect'
 
-import {Layout, Row, styles, webStyle} from '@deslop/design/web'
+import {Layout, Row, styles, webStyle} from '@deslop/components/web'
 
 import {gatewayRows} from '#screens/gateway.ts'
 import type {GatewayScreen} from '#screens/gateway.ts'

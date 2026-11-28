@@ -34,3 +34,11 @@ Check a built app's authorization with `node apps/<app>/dist/server.js probe`: i
 ## Client clocks
 
 Read time through `client/clock`'s `clockAtom(every)`, and pass that value to `shared/format`'s `ageOf` and `dayOf`.
+
+## App shell
+
+An app's screen keeps only its own messages; `client/shell` owns the clock, the sign-in, Retry and the refusals.
+
+- Define the shell once with `appShell({every, name})` and draw the screen inside its `view`, passing its parts (`now`, `authenticate`, `retry`, `signingIn`, `problem(reads)`) on to the view. `readState(reads)` says whether reads `failed` or are `stale`; `components/shell`'s `problemScreen` draws a refusal or a sign-in.
+- Subscribe to reads with `observeRead`: the shell retries the reads on screen and, on the web, signs in when the server asks for it.
+- Mount on a host's layer: `web/shell`'s `layerWebShell(name)` or `iphone/shell`'s `layerIPhoneShell({name, route, replace?})`, which takes the origins, the `<name>://` scheme, the Keychain session and the router from the app's name. The Expo config reads the same origins from `shared/origins`' `iphoneOrigins(name)`.

@@ -15,3 +15,17 @@ export function serverPack(heapMiB: number) {
 		target: 'node26'
 	} satisfies UserConfig['pack']
 }
+
+// The web client's build and the server pack that an app on the runtime's shell shares: the server starts at src/server.ts.
+export function appBuild(heapMiB: number) {
+	return {
+		build: {
+			chunkSizeWarningLimit: 750,
+			modulePreload: {polyfill: false},
+			outDir: 'dist/client',
+			rolldownOptions: {output: {codeSplitting: {groups: [{name: 'effect', test: /node_modules[\\/]effect[\\/]/u}]}}},
+			target: 'esnext'
+		},
+		pack: {...serverPack(heapMiB), entry: ['src/server.ts']}
+	} satisfies UserConfig
+}

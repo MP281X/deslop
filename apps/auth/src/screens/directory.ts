@@ -5,7 +5,7 @@ import {Array, Boolean, DateTime, Function, Option, Schema, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 
-import type {Selection, ToolbarAction, ToolbarOptions} from '@deslop/design/model'
+import type {Selection, ToolbarAction, ToolbarOptions} from '@deslop/components/model'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {UserId} from '@deslop/runtime/shared/auth'

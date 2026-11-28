@@ -8,8 +8,8 @@ import {Array, Boolean, Function, HashSet, Layer, Option, pipe} from 'effect'
 import {FetchHttpClient} from 'effect/http'
 import {Atom, AtomRegistry} from 'effect/reactivity'
 
-import type {ToolbarOptions} from '@deslop/design/model'
-import {Row, Toolbar, black, fold, styles} from '@deslop/design/native'
+import type {ToolbarOptions} from '@deslop/components/model'
+import {Row, Toolbar, black, fold, styles} from '@deslop/components/native'
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 
 import {registerChapters} from '#iphone/push.ts'

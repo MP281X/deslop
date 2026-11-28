@@ -2,7 +2,7 @@ import {Native} from '@effect/ui-native'
 
 import {Array, Boolean, Function, String, pipe} from 'effect'
 
-import {Layout, Row, nativeControls, styles} from '@deslop/design/native'
+import {Layout, Row, nativeControls, styles} from '@deslop/components/native'
 
 import {marks} from '#iphone/marks.ts'
 import {gatewayRows} from '#screens/gateway.ts'

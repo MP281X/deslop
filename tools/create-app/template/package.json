@@ -16,11 +16,12 @@
 	"sideEffects": false,
 	"main": "src/iphone/main.ts",
 	"imports": {
+		"#app": "./src/app.ts",
 		"#contracts": "./src/contracts.ts",
-		"#server/*": "./src/server/*",
-		"#web/*": "./src/web/*",
-		"#iphone/*": "./src/iphone/*",
-		"#screens/*": "./src/screens/*"
+		"#items/*": "./src/items/*",
+		"#reads": "./src/reads.ts",
+		"#view": "./src/view.ts",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -34,9 +35,8 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"devDependencies": {
-		"@deslop/design": "workspace:*",
+		"@deslop/components": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@effect/platform-node": "latest",
 		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"@effect/ui-native": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-native@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"effect": "latest",

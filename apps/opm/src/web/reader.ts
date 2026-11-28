@@ -4,7 +4,7 @@ import type {Html} from '@effect/ui/html'
 
 import {Array, Boolean, Effect, Function, Queue, Schema, Stream} from 'effect'
 
-import {ink, styles, webStyle} from '@deslop/design/web'
+import {ink, styles, webStyle} from '@deslop/components/web'
 
 import type {Screen} from '#screens/library.ts'
 import {Message} from '#screens/model.ts'

@@ -4,8 +4,8 @@ import {Pressable} from '@effect/ui-native/kit'
 
 import {Array, Boolean, Function, Match, Predicate, Schema, pipe} from 'effect'
 
-import type {ToolbarOptions} from '@deslop/design/model'
-import {Layout} from '@deslop/design/native'
+import type {ToolbarOptions} from '@deslop/components/model'
+import {Layout} from '@deslop/components/native'
 
 import {appOrigin} from '#iphone/origin.ts'
 import {CvScreen, ProfileScreen} from '#screens/portfolio.ts'
